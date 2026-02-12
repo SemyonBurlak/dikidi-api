@@ -207,9 +207,9 @@ public class DikidiClientImpl implements DikidiClient {
                             return Optional.empty();
                         }
 
-                        int errorCode = root.at("/error/code").asInt();
-                        if (errorCode != 0) {
-                            log.warn("Dikidi API error {}: {}", errorCode, context);
+                        JsonNode errorCodeNode = root.at("/error/code");
+                        if (!errorCodeNode.isMissingNode() && errorCodeNode.asInt() != 0) {
+                            log.warn("Dikidi API error {}: {}", errorCodeNode.asInt(), context);
                             return Optional.empty();
                         }
 
