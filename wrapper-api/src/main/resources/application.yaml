@@ -6,6 +6,7 @@ spring:
     name: dikidi-api
   client:
     base-url: "https://dikidi.ru"
+    auth-url: "https://auth.dikidi.ru"
     connect-timeout: 10_000
     read-timeout: 20_000
 resilience4j:

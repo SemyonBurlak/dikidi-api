@@ -16,7 +16,7 @@ public class DikidiRestClientConfig {
 
     private final ClientProps clientProps;
 
-    @Bean
+    @Bean("restClient")
     public RestClient restClient() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(clientProps.connectTimeout());
@@ -27,6 +27,19 @@ public class DikidiRestClientConfig {
                 .baseUrl(clientProps.baseUrl())
                 .build();
     }
+
+    @Bean("authClient")
+    public RestClient authClient() {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(clientProps.connectTimeout());
+        requestFactory.setReadTimeout(clientProps.readTimeout());
+
+        return RestClient.builder()
+                .requestFactory(requestFactory)
+                .baseUrl(clientProps.authUrl())
+                .build();
+    }
+
 
     @Bean
     public ObjectMapper objectMapper() {

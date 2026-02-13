@@ -2,9 +2,11 @@ package io.github.semyonburlak.dikidiapi.client;
 
 import io.github.resilience4j.ratelimiter.RateLimiter;
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
+import io.github.semyonburlak.dikidiapi.dto.AuthResult;
 import io.github.semyonburlak.dikidiapi.dto.CategoryDto;
 import io.github.semyonburlak.dikidiapi.dto.MasterDto;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -25,20 +27,28 @@ import java.util.*;
 public class DikidiClientImpl implements DikidiClient {
 
     private final RestClient restClient;
+    private final RestClient authClient;
+
     private final ObjectMapper objectMapper;
     private final RateLimiter rateLimiter;
 
     public DikidiClientImpl(
-            RestClient restClient,
+            @Qualifier("restClient") RestClient restClient,
+            @Qualifier("authClient") RestClient authClient,
             ObjectMapper objectMapper,
             RateLimiterRegistry registry) {
         this.restClient = restClient;
+        this.authClient = authClient;
         this.objectMapper = objectMapper;
         this.rateLimiter = registry.rateLimiter("dikidi");
     }
 
     private static final DateTimeFormatter DIKIDI_DATETIME_FORMATTER = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    public AuthResult authenticate(String number, String password) {
+        return null;
+    }
 
     @Override
     public List<CategoryDto> getAllCategories(long companyId) {
