@@ -29,7 +29,7 @@ public class DikidiRestClientConfig {
     }
 
     @Bean("authClient")
-    public RestClient authClient() {
+    public RestClient authRestClient() {
         SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
         requestFactory.setConnectTimeout(clientProps.connectTimeout());
         requestFactory.setReadTimeout(clientProps.readTimeout());

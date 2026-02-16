@@ -2,15 +2,16 @@ package io.github.semyonburlak.dikidiapi.client;
 
 import io.github.resilience4j.ratelimiter.RateLimiter;
 import io.github.resilience4j.ratelimiter.RateLimiterRegistry;
-import io.github.semyonburlak.dikidiapi.dto.AuthResult;
 import io.github.semyonburlak.dikidiapi.dto.CategoryDto;
 import io.github.semyonburlak.dikidiapi.dto.MasterDto;
+import io.github.semyonburlak.dikidiapi.exception.DikidiApiException;
+import io.github.semyonburlak.dikidiapi.exception.DikidiErrorCode;
+import io.github.semyonburlak.dikidiapi.exception.DikidiException;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriBuilder;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
@@ -20,66 +21,57 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+import static io.github.semyonburlak.dikidiapi.client.ErrorParser.parseHttpError;
 
 @Service
 @Slf4j
 public class DikidiClientImpl implements DikidiClient {
 
     private final RestClient restClient;
-    private final RestClient authClient;
-
     private final ObjectMapper objectMapper;
     private final RateLimiter rateLimiter;
 
+    private static final DateTimeFormatter DIKIDI_DATETIME_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
     public DikidiClientImpl(
-            @Qualifier("restClient") RestClient restClient,
-            @Qualifier("authClient") RestClient authClient,
+            RestClient restClient,
             ObjectMapper objectMapper,
             RateLimiterRegistry registry) {
         this.restClient = restClient;
-        this.authClient = authClient;
         this.objectMapper = objectMapper;
         this.rateLimiter = registry.rateLimiter("dikidi");
     }
 
-    private static final DateTimeFormatter DIKIDI_DATETIME_FORMATTER = DateTimeFormatter
-            .ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    public AuthResult authenticate(String number, String password) {
-        return null;
-    }
+    // ==================== Categories & Slots ====================
 
     @Override
     public List<CategoryDto> getAllCategories(long companyId) {
-
-        Optional<JsonNode> root = executeGet(
+        JsonNode root = executeGet(
                 "/mobile/ajax/newrecord/company_services",
-                Map.of(
-                        "company", companyId
-                ),
-                "companyId=%d".formatted(companyId)
+                Map.of("company", companyId),
+                "getAllCategories: companyId=%d".formatted(companyId)
         );
 
-        if (root.isEmpty()) {
-            return List.of();
-        }
-
-        JsonNode categoryListNode = root.get().at("/data/list");
-
-        if (categoryListNode.isEmpty() || !categoryListNode.isObject()) {
-            log.warn("Category list is empty or not an object: companyId={}", companyId);
+        JsonNode listNode = root.at("/data/list");
+        if (listNode.isMissingNode() || listNode.isEmpty()) {
+            log.warn("Category list is empty: companyId={}", companyId);
             return List.of();
         }
 
         Map<String, CategoryDto> categoryMap = objectMapper.convertValue(
-                categoryListNode, new TypeReference<>() {
+                listNode, new TypeReference<>() {
                 }
         );
 
         List<CategoryDto> categories = new ArrayList<>(categoryMap.values());
-
-        log.info("Found {} categories", categories.size());
+        log.info("Found {} categories: companyId={}", categories.size(), companyId);
         return categories;
     }
 
@@ -89,80 +81,66 @@ public class DikidiClientImpl implements DikidiClient {
         List<LocalDate> datesWithSlots = getDatesWithSlots(companyId, serviceId, now, now.plusMonths(1));
 
         Map<LocalDateTime, List<MasterDto>> slots = new TreeMap<>();
-
         for (LocalDate date : datesWithSlots) {
             slots.putAll(getSlotsByDay(companyId, serviceId, date));
         }
+
         log.info("Found {} time slots: companyId={}, serviceId={}", slots.size(), companyId, serviceId);
         return slots;
     }
 
-    private Map<LocalDateTime, List<MasterDto>> getSlotsByDay(long companyId, long serviceId, LocalDate date) {
+    // ==================== Private helpers ====================
 
-        Optional<JsonNode> root = executeGet(
+    private Map<LocalDateTime, List<MasterDto>> getSlotsByDay(long companyId, long serviceId, LocalDate date) {
+        JsonNode root = executeGet(
                 "/mobile/ajax/newrecord/get_datetimes",
                 Map.of(
                         "company_id", companyId,
                         "service_id[]", serviceId,
                         "date", date
                 ),
-                "companyId=%d, serviceId=%d, date=%s"
+                "getSlotsByDay: companyId=%d, serviceId=%d, date=%s"
                         .formatted(companyId, serviceId, date)
         );
 
-        if (root.isEmpty()) {
+        JsonNode mastersNode = root.at("/data/masters");
+        JsonNode timesNode = root.at("/data/times");
+
+        if (mastersNode.isMissingNode() || timesNode.isMissingNode()) {
+            log.warn("Masters or times missing: companyId={}, serviceId={}, date={}",
+                    companyId, serviceId, date);
             return Map.of();
         }
 
-        JsonNode mastersNode = root.get().at("/data/masters");
-        JsonNode timesNode = root.get().at("/data/times");
-
-        if (mastersNode.isEmpty() || !mastersNode.isObject()) {
-
-            log.warn("Masters node empty or not an object: companyId={}, serviceId={}, date={}",
-                    companyId, serviceId, date
-            );
-
-            return Map.of();
-        }
-
-        if (timesNode.isEmpty() || !timesNode.isObject()) {
-
-            log.warn("Time node empty or not an object: companyId={}, serviceId={}, date={}",
-                    companyId, serviceId, date
-            );
-
-            return Map.of();
-        }
-
-        Map<Long, MasterDto> masterMap = objectMapper.convertValue(mastersNode, new TypeReference<>() {
-        });
-
-        Map<Long, List<String>> timesMap = objectMapper.convertValue(timesNode, new TypeReference<>() {
-        });
+        Map<Long, MasterDto> masterMap = objectMapper.convertValue(
+                mastersNode, new TypeReference<>() {
+                }
+        );
+        Map<Long, List<String>> timesMap = objectMapper.convertValue(
+                timesNode, new TypeReference<>() {
+                }
+        );
 
         Map<LocalDateTime, List<MasterDto>> slots = new TreeMap<>();
 
         timesMap.forEach((masterId, times) ->
                 times.forEach(dateTimeString -> {
-
-                            try {
-                                LocalDateTime dateTime = LocalDateTime.parse(dateTimeString, DIKIDI_DATETIME_FORMATTER);
-                                slots.computeIfAbsent(dateTime, _ -> new ArrayList<>())
-                                        .add(masterMap.get(masterId));
-                            } catch (DateTimeParseException e) {
-                                log.warn("Unparseable datetime: '{}'", dateTimeString);
-                            }
-                        }
-                )
+                    try {
+                        LocalDateTime dateTime = LocalDateTime.parse(dateTimeString, DIKIDI_DATETIME_FORMATTER);
+                        slots.computeIfAbsent(dateTime, _ -> new ArrayList<>())
+                                .add(masterMap.get(masterId));
+                    } catch (DateTimeParseException e) {
+                        log.warn("Unparseable datetime: '{}'", dateTimeString);
+                    }
+                })
         );
 
         return slots;
     }
 
-    private List<LocalDate> getDatesWithSlots(long companyId, long serviceId, LocalDate from, LocalDate to) {
-
-        Optional<JsonNode> root = executeGet(
+    private List<LocalDate> getDatesWithSlots(long companyId, long serviceId,
+                                              LocalDate from, LocalDate to) {
+        JsonNode root = executeGet(
                 "/ajax/newrecord/get_dates_true",
                 Map.of(
                         "company_id", companyId,
@@ -170,73 +148,63 @@ public class DikidiClientImpl implements DikidiClient {
                         "date_from", from,
                         "date_to", to
                 ),
-                "companyId=%d, serviceId=%d, from=%s, to=%s"
+                "getDatesWithSlots: companyId=%d, serviceId=%d, from=%s, to=%s"
                         .formatted(companyId, serviceId, from, to)
         );
 
-        if (root.isEmpty()) {
+        JsonNode datesTrueNode = root.path("dates_true");
+        if (datesTrueNode.isMissingNode() || !datesTrueNode.isArray()) {
+            log.warn("dates_true missing: companyId={}, serviceId={}", companyId, serviceId);
             return List.of();
         }
 
-        JsonNode datesTrueNode = root.get().path("dates_true");
-
-        if (datesTrueNode.isEmpty() || !datesTrueNode.isArray()) {
-
-            log.warn("dates_true is missing or not an array: companyId={}, serviceId={}, from={}, to={}",
-                    companyId, serviceId, from, to
-            );
-
-            return List.of();
-        }
-
-        List<LocalDate> dates = objectMapper.convertValue(datesTrueNode, new TypeReference<>() {
-        });
-
-        log.info("Found {} dates: companyId={}, serviceId={}, from={}, to={}",
-                dates.size(), companyId, serviceId, from, to
+        List<LocalDate> dates = objectMapper.convertValue(
+                datesTrueNode, new TypeReference<>() {
+                }
         );
 
+        log.info("Found {} dates: companyId={}, serviceId={}", dates.size(), companyId, serviceId);
         return dates;
     }
 
-    private Optional<JsonNode> executeGet(String path, Map<String, Object> queryParams, String context) {
+    private JsonNode executeGet(String path, Map<String, Object> queryParams, String context) {
         return rateLimiter.executeSupplier(() -> {
-                    try {
+            try {
+                JsonNode root = restClient.get()
+                        .uri(uri -> {
+                            UriBuilder builder = uri.path(path);
+                            queryParams.forEach(builder::queryParam);
+                            return builder.build();
+                        })
+                        .retrieve()
+                        .body(JsonNode.class);
 
-                        JsonNode root = restClient.get()
-                                .uri(uri -> {
-                                    UriBuilder builder = uri.path(path);
-                                    queryParams.forEach(builder::queryParam);
-                                    return builder.build();
-                                })
-                                .retrieve()
-                                .body(JsonNode.class);
-
-                        if (root == null || root.isEmpty()) {
-                            log.warn("Empty response: {}", context);
-                            return Optional.empty();
-                        }
-
-                        JsonNode errorCodeNode = root.at("/error/code");
-                        if (!errorCodeNode.isMissingNode() && errorCodeNode.asInt() != 0) {
-                            log.warn("Dikidi API error {}: {}", errorCodeNode.asInt(), context);
-                            return Optional.empty();
-                        }
-
-                        return Optional.of(root);
-                    } catch (RestClientResponseException e) {
-
-                        log.warn(
-                                "Dikidi response exception {}: {} body={}",
-                                e.getStatusCode(), context, e.getResponseBodyAsString()
-                        );
-
-                    } catch (RestClientException e) {
-                        log.warn("Dikidi request exception: {}, cause={}", context, e.getMessage());
-                    }
-                    return Optional.empty();
+                if (root == null || root.isEmpty()) {
+                    throw new DikidiApiException(DikidiErrorCode.EMPTY_RESPONSE, "No body");
                 }
-        );
+
+                checkForError(root);
+                return root;
+            } catch (HttpClientErrorException e) {
+                log.warn("HTTP error {}: {}", e.getStatusCode().value(), context);
+                throw parseHttpError(e, objectMapper);
+            } catch (RestClientException e) {
+                log.warn("Request failed: {}", context);
+                throw new DikidiException("Request failed", e);
+            }
+        });
+    }
+
+    private void checkForError(JsonNode root) {
+        JsonNode errorNode = root.path("error");
+        JsonNode codeNode = errorNode.path("code");
+
+        boolean hasError = codeNode.isNumber()
+                ? codeNode.asInt() != 0
+                : !codeNode.asString().isEmpty() && !codeNode.asString().equals("null");
+
+        if (hasError) {
+            throw new DikidiApiException(errorNode);
+        }
     }
 }
-
