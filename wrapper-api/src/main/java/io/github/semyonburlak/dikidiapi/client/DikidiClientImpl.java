@@ -48,9 +48,6 @@ public class DikidiClientImpl implements DikidiClient {
         this.rateLimiter = registry.rateLimiter("dikidi");
     }
 
-
-    // ==================== Categories & Slots ====================
-
     @Override
     public List<CategoryDto> getAllCategories(long companyId) {
         JsonNode root = executeGet(
@@ -88,8 +85,6 @@ public class DikidiClientImpl implements DikidiClient {
         log.info("Found {} time slots: companyId={}, serviceId={}", slots.size(), companyId, serviceId);
         return slots;
     }
-
-    // ==================== Private helpers ====================
 
     private Map<LocalDateTime, List<MasterDto>> getSlotsByDay(long companyId, long serviceId, LocalDate date) {
         JsonNode root = executeGet(
@@ -197,7 +192,10 @@ public class DikidiClientImpl implements DikidiClient {
 
     private void checkForError(JsonNode root) {
         JsonNode errorNode = root.path("error");
+
         JsonNode codeNode = errorNode.path("code");
+
+        if (codeNode.isMissingNode()) return;
 
         boolean hasError = codeNode.isNumber()
                 ? codeNode.asInt() != 0

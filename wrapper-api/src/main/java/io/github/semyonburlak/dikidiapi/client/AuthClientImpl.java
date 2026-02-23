@@ -16,10 +16,12 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.JsonNodeType;
 
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import static io.github.semyonburlak.dikidiapi.client.ErrorParser.parseHttpError;
 
@@ -40,12 +42,9 @@ public class AuthClientImpl implements AuthClient {
     }
 
     @Override
-    public AuthResult authenticate(String number, String password) {
+    public AuthResult authenticate(MultiValueMap<String, String> form) {
 
         return rateLimiter.executeSupplier(() -> {
-            MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-            form.add("number", number);
-            form.add("password", password);
 
             ResponseEntity<JsonNode> response;
             try {
@@ -65,7 +64,19 @@ public class AuthClientImpl implements AuthClient {
                 throw new DikidiApiException(DikidiErrorCode.EMPTY_RESPONSE, "Empty body");
             }
 
-            String callback = body.path("callback").asString();
+            JsonNode cb = body.path("callback");
+
+            String callback;
+
+            if (cb.getNodeType() == JsonNodeType.ARRAY
+                    && !cb.isEmpty()
+                    && cb.get(0).getNodeType() == JsonNodeType.STRING) {
+                callback = cb.get(0).asString();
+            } else {
+                throw new DikidiApiException(DikidiErrorCode.UNKNOWN,
+                        "Unexpected callback field: " + cb);
+            }
+
             if (!callback.contains("sw.auth.complete")) {
                 throw new DikidiApiException(DikidiErrorCode.UNKNOWN,
                         "Unexpected response: " + callback);
@@ -85,6 +96,8 @@ public class AuthClientImpl implements AuthClient {
                     .orElseThrow();
 
             Instant expiresAt = Instant.now().plusSeconds(extractMaxAge(rawCookie));
+
+            log.info("Successful authentication: sessionId={}", sessionId);
 
             return new AuthResult(sessionId, token, expiresAt);
         });
