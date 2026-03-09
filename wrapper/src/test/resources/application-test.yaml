@@ -1,0 +1,6 @@
+spring:
+  client:
+    base-url: http://localhost
+    auth-url: http://localhost
+    connect-timeout: 1000
+    read-timeout: 1000

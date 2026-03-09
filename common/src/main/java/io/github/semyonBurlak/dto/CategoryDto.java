@@ -1,4 +1,4 @@
-package io.github.semyonBurlak.dto;
+package io.github.semyonburlak.dto;
 
 import java.util.List;
 

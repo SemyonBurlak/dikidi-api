@@ -1,18 +1,34 @@
 server:
   port: ${WRAPPER_SERVER_PORT:8080}
   address: ${WRAPPER_SERVER_ADDRESS:0.0.0.0}
+logging:
+  charset:
+    console: UTF-8
+  level:
+    io.github.semyonburlak.wrapper: DEBUG
 spring:
   application:
     name: wrapper
+  mvc:
+    format:
+      date: "yyyy-MM-dd"
+      date-time: "yyyy-MM-dd HH:mm:ss"
+dikidi:
   client:
     base-url: ${DIKIDI_BASE_URL:https://dikidi.net}
-    auth-url: "https://auth.dikidi.net"
-    connect-timeout: 10_000
-    read-timeout: 20_000
+    auth-url: ${DIKIDI_AUTH_URL:https://auth.dikidi.net}
+    connect-timeout: ${CONNECTION_TIMEOUT:10000}
+    read-timeout: ${READ_TIMEOUT:20000}
+
 resilience4j:
   ratelimiter:
     instances:
       dikidi:
-        limit-for-period: 10
+        limit-for-period: 7
         limit-refresh-period: 1s
         timeout-duration: 5s
+  retry:
+    instances:
+      dikidi:
+        max-attempts: 3
+        wait-duration: 500ms

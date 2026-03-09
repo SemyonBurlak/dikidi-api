@@ -1,6 +1,5 @@
-package io.github.semyonBurlak.config;
+package io.github.semyonburlak.config;
 
-import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -10,11 +9,14 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.PropertyNamingStrategies;
 import tools.jackson.databind.json.JsonMapper;
 
-@RequiredArgsConstructor
 @Configuration
 public class ClientConfig {
 
     private final ClientProps clientProps;
+
+    public ClientConfig(ClientProps clientProps) {
+        this.clientProps = clientProps;
+    }
 
     @Bean("wrapperClient")
     public RestClient restClient() {
@@ -22,7 +24,7 @@ public class ClientConfig {
 
         return RestClient.builder()
                 .requestFactory(requestFactory)
-                .baseUrl(clientProps.wrapper().address())
+                .baseUrl(clientProps.wrapper().url())
                 .build();
     }
 

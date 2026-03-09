@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(JAVA_HOME=\"$JAVA_HOME\" \"$MVN\" test:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "Bash(mvn test:*)",
+      "Bash(./mvnw test:*)",
+      "Bash(JAVA_HOME=\"C:/Users/pc_user/.jdks/openjdk-25.0.1\" \"/c/Users/pc_user/.m2/wrapper/dists/apache-maven-3.9.12-bin/5nmfsn99br87k5d4ajlekdq10k/apache-maven-3.9.12/bin/mvn\" install:*)"
+    ]
+  }
+}
